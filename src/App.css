@@ -64,3 +64,9 @@
 .app.fullscreen{position:fixed;inset:0;z-index:9999;background:#f4f6fa;overflow:auto}.app.fullscreen header{height:62px}.app.fullscreen main{min-height:calc(100vh - 98px)}
 .app.fullscreen section{padding:20px 28px}.app.fullscreen .stage{max-width:1100px}.app.fullscreen .court{max-height:calc(100vh - 210px)}
 @media(max-width:700px){.header-actions{margin-left:auto}.header-actions button{font-size:10px;padding:7px 8px}.app.fullscreen header{height:54px;padding:8px 10px}.app.fullscreen header b{font-size:12px}.app.fullscreen nav{display:none}.app.fullscreen main{min-height:calc(100vh - 54px);display:block}.app.fullscreen aside{display:none}.app.fullscreen section{padding:8px 8px 18px}.app.fullscreen .intro{display:flex;align-items:center;margin-bottom:8px}.app.fullscreen .intro h1{font-size:18px;margin:3px 0}.app.fullscreen .intro p{display:none}.app.fullscreen .score{padding:6px 10px}.app.fullscreen .score b{font-size:20px}.app.fullscreen .stage{width:100%;max-width:none;margin:0}.app.fullscreen .court{width:100%;max-height:none;aspect-ratio:1.62}.app.fullscreen .legend{margin-top:8px;font-size:10px}.app.fullscreen footer{display:none}}
+/* 2D board rotation and zoom */
+.stage[class~="2d"]{transform-origin:center center;transition:transform .12s ease;touch-action:none;cursor:grab}
+.stage[class~="2d"]:active{cursor:grabbing}
+/* Keep role marker in the torso and move number to a separate floating badge. */
+.stage[class~="3d"] .model-base{top:-10px;left:27px;width:24px;height:16px;border:2px solid #fff;border-radius:9px;background:#172033;color:#fff;line-height:12px;transform:translateZ(42px);z-index:8}
+.stage[class~="3d"] .model-torso{z-index:5}
