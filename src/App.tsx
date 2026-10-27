@@ -47,6 +47,7 @@ export default function App() {
   const [orbit, setOrbit] = useState(false)
   const [actionId, setActionId] = useState<string | null>(null)
   const [replaceOpen, setReplaceOpen] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
   const boardRef = useRef<HTMLDivElement>(null)
   const orbitStart = useRef({ x: 0, y: 0, rotX: 55, rotY: -12 })
   const press = useRef<number | undefined>(undefined)
@@ -102,10 +103,12 @@ export default function App() {
   }
 
   const exportJson = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify({ schema: 2, pieces, score }, null, 2)], { type: 'application/json' })); a.download = '排球战术方案.json'; a.click() }
+  const toggleFullscreen = async () => { if (!document.fullscreenElement) { await document.documentElement.requestFullscreen?.(); setFullscreen(true) } else { await document.exitFullscreen?.(); setFullscreen(false) } }
+  useEffect(() => { const onFull = () => setFullscreen(Boolean(document.fullscreenElement)); document.addEventListener('fullscreenchange', onFull); return () => document.removeEventListener('fullscreenchange', onFull) }, [])
   const courtStyle = view === '3d' ? { transform: `perspective(1200px) rotateX(${rotX}deg) rotateY(${rotY}deg) scale(${zoom})` } : undefined
 
-  return <div className='app' onPointerMove={move} onPointerUp={stopDrag}>
-    <header><b>✦ VOLLEYBOARD</b><nav><button className={mode === 'board' ? 'on' : ''} onClick={() => setMode('board')}>战术板</button><button className={mode === 'match' ? 'on' : ''} onClick={() => setMode('match')}>比赛模式</button></nav><button onClick={exportJson}>导出 JSON</button></header>
+  return <div className={'app '+(fullscreen?'fullscreen':'')} onPointerMove={move} onPointerUp={stopDrag}>
+    <header><b>✦ VOLLEYBOARD</b><nav><button className={mode === 'board' ? 'on' : ''} onClick={() => setMode('board')}>战术板</button><button className={mode === 'match' ? 'on' : ''} onClick={() => setMode('match')}>比赛模式</button></nav><div className='header-actions'><button onClick={toggleFullscreen}>{fullscreen ? '退出全屏' : '全屏模式'}</button><button onClick={exportJson}>导出 JSON</button></div></header>
     <main><aside><h4>棋子工具</h4><div className='teams'><button className={team === 'home' ? 'on' : ''} onClick={() => setTeam('home')}>蓝方</button><button className={team === 'away' ? 'on orange' : ''} onClick={() => setTeam('away')}>橙方</button></div><div className='tools'>{types.map(t => <button key={t} className={tool === t ? 'sel' : ''} onClick={() => setTool(t)}><i className={t}>{labels[t]}</i>{names[t]}</button>)}</div><p>点击放置 · 拖动移动<br />长按打开操作菜单</p><h4>显示</h4><button className={view === '2d' ? 'wide on' : 'wide'} onClick={() => setView('2d')}>2D 平面</button><button className={view === '3d' ? 'wide on' : 'wide'} onClick={() => setView('3d')}>3D 预览</button></aside>
       <section><div className='intro'><div><small>{mode === 'match' ? 'MATCH CENTER' : 'TACTICAL BOARD'}</small><h1>{mode === 'match' ? (score.finished ? '比赛已结束' : `第 ${Math.min(score.set, 5)} 局进行中`) : '准备你的下一套战术'}</h1><p>{msg}</p></div><div className='score'><span>蓝方 <b>{score.home}</b><small>局 {score.setsHome}</small></span><em>:</em><span>橙方 <b>{score.away}</b><small>局 {score.setsAway}</small></span></div></div>
         {mode === 'match' && <div className='controls'><button className='blue' disabled={score.finished} onClick={() => scorePoint('home')}>蓝方得分 +1</button><button disabled={!history.length} onClick={() => { const previous = history.at(-1); if (previous) { setScore(previous.score); setPieces(previous.pieces); setHistory(history.slice(0, -1)); setMsg('已撤销上一球，比分和站位已恢复') } }}>撤销上一球</button><button className='orange' disabled={score.finished} onClick={() => scorePoint('away')}>橙方得分 +1</button></div>}
@@ -116,5 +119,8 @@ export default function App() {
     </main><footer>VOLLEYBOARD MVP · 原创战术工具</footer>
   </div>
 }
+
+
+
 
 
