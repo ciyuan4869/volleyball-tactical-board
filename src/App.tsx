@@ -7,7 +7,7 @@ type CourtMode = 'full' | 'single'
 type ViewMode = '2d' | '3d'
 type Piece = { id: string; type: PieceType; team: Team; x: number; y: number; number?: number }
 type Score = { home: number; away: number; setsHome: number; setsAway: number; serving: Team; set: number; finished: boolean }
-type Snapshot = { score: Score; pieces: Piece[] }
+type Snapshot = { score: Score; pieces: Piece[]; winner: Team }
 type Transform2D = { rotation: number; scale: number }
 type Transform3D = { yaw: number; pitch: number; scale: number }
 type Interaction = { kind: 'surface' | 'piece'; id?: string; pointerId: number; startX: number; startY: number; moved: boolean }
@@ -72,6 +72,7 @@ export default function App() {
   const pointerMap = useRef(new Map<number, { x: number; y: number }>())
   const pinchDistance = useRef<number | null>(null)
   const pinchStartScale = useRef(1)
+  const scoreGesture = useRef<{ team: Team; pointerId: number; startY: number; startX: number } | null>(null)
   const transformStart = useRef({ x: 0, y: 0, rotation: 0, yaw: 0, pitch: 48 })
 
   useEffect(() => {
@@ -82,6 +83,7 @@ export default function App() {
       if (Array.isArray(data.pieces) && data.score) {
         setPieces(data.pieces)
         setScore({ ...initialScore, ...data.score })
+        if (Array.isArray(data.history)) setHistory(data.history.filter((item: Snapshot) => item && item.score && Array.isArray(item.pieces) && (item.winner === 'home' || item.winner === 'away')))
       }
       if (data.courtMode === 'single' || data.courtMode === 'full') setCourtMode(data.courtMode)
     } catch {
@@ -90,8 +92,8 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem('vb', JSON.stringify({ schema: 3, pieces, score, courtMode }))
-  }, [pieces, score, courtMode])
+    localStorage.setItem('vb', JSON.stringify({ schema: 4, pieces, score, courtMode, history }))
+  }, [pieces, score, courtMode, history])
 
   useEffect(() => {
     const onFullscreen = () => {
@@ -266,7 +268,7 @@ export default function App() {
 
   const scorePoint = (winner: Team) => {
     if (score.finished) return
-    setHistory((current) => [...current, { score, pieces }])
+    setHistory((current) => [...current, { score, pieces, winner }])
     const receiving = score.serving !== winner
     const nextPieces = receiving ? rotateTeam(pieces, winner) : pieces
     const next = { ...score, [winner]: score[winner] + 1, serving: winner } as Score
@@ -287,6 +289,40 @@ export default function App() {
     }
     setMode('match')
     setCourtMode('full')
+  }
+
+  const undoPoint = (team?: Team) => {
+    const previous = history.at(-1)
+    if (!previous) {
+      setMsg('没有可撤销的得分记录')
+      return
+    }
+    if (team && previous.winner !== team) {
+      setMsg(`最近一分属于${previous.winner === 'home' ? '蓝方' : '橙方'}，请先撤销最近一球`)
+      return
+    }
+    setScore(previous.score)
+    setPieces(previous.pieces)
+    setHistory((current) => current.slice(0, -1))
+    setMsg('已撤销上一分，比分、发球权和站位已恢复')
+  }
+
+  const beginScoreGesture = (event: React.PointerEvent<HTMLElement>, side: Team) => {
+    if (mode !== 'match' || score.finished || (event.target as HTMLElement).closest('button')) return
+    scoreGesture.current = { team: side, pointerId: event.pointerId, startY: event.clientY, startX: event.clientX }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+
+  const finishScoreGesture = (event: React.PointerEvent<HTMLElement>) => {
+    const gesture = scoreGesture.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return
+    const deltaY = event.clientY - gesture.startY
+    const deltaX = event.clientX - gesture.startX
+    if (Math.abs(deltaY) > 28 && Math.abs(deltaY) > Math.abs(deltaX) * 1.15) {
+      if (deltaY < 0) scorePoint(gesture.team)
+      else undoPoint(gesture.team)
+    }
+    scoreGesture.current = null
   }
 
   const exportJson = () => {
@@ -334,8 +370,7 @@ export default function App() {
         {mode === 'board' && <><h4>战术板范围</h4><div className="court-mode"><button className={courtMode === 'full' ? 'on' : ''} onClick={() => setCourtMode('full')}>完整球场</button><button className={courtMode === 'single' ? 'on' : ''} onClick={() => setCourtMode('single')}>单边半场</button></div></>}
       </aside>
       <section>
-        <div className="intro"><div><small>{mode === 'match' ? 'MATCH CENTER' : 'TACTICAL BOARD'}</small><h1>{mode === 'match' ? (score.finished ? '比赛已结束' : `第 ${Math.min(score.set, 5)} 局进行中`) : '准备你的下一套战术'}</h1><p>{msg}</p></div><div className="scoreboard" aria-label="比赛计分板"><div className={`score-team home ${score.serving === 'home' ? 'serving' : ''}`}><span className="score-team-name">蓝方</span><strong>{score.home}</strong><small>局分 {score.setsHome}</small>{score.serving === 'home' && <em>● 发球</em>}</div><div className="score-center"><small>第 {Math.min(score.set, 5)} 局</small><b>VS</b></div><div className={`score-team away ${score.serving === 'away' ? 'serving' : ''}`}><span className="score-team-name">橙方</span><strong>{score.away}</strong><small>局分 {score.setsAway}</small>{score.serving === 'away' && <em>● 发球</em>}</div></div></div>
-        {mode === 'match' && <div className="controls"><button className="blue" disabled={score.finished} onClick={() => scorePoint('home')}>蓝方得分 +1</button><button disabled={!history.length} onClick={() => { const previous = history.at(-1); if (previous) { setScore(previous.score); setPieces(previous.pieces); setHistory(history.slice(0, -1)); setMsg('已撤销上一球，比分和站位已恢复') } }}>撤销上一球</button><button className="orange" disabled={score.finished} onClick={() => scorePoint('away')}>橙方得分 +1</button></div>}
+        <div className={`intro ${mode === 'match' ? 'match-intro' : ''}`}><div className="intro-copy"><small>{mode === 'match' ? 'MATCH CENTER' : 'TACTICAL BOARD'}</small><h1>{mode === 'match' ? (score.finished ? '比赛已结束' : `第 ${Math.min(score.set, 5)} 局进行中`) : '准备你的下一套战术'}</h1><p>{msg}</p></div><div className="scoreboard" aria-label="比赛计分板"><div className={`score-team home ${score.serving === 'home' ? 'serving' : ''}`} onPointerDown={(event) => beginScoreGesture(event, 'home')} onPointerUp={finishScoreGesture} onPointerCancel={() => { scoreGesture.current = null }}><span className="score-team-name">蓝方</span><strong>{score.home}</strong><small>局分 {score.setsHome}</small>{score.serving === 'home' && <em>● 发球</em>}{mode === 'match' && <div className="score-actions"><button aria-label="蓝方减一分" disabled={score.finished || score.home === 0} onPointerDown={(event) => event.stopPropagation()} onClick={() => undoPoint('home')}>−</button><button aria-label="蓝方加一分" disabled={score.finished} onPointerDown={(event) => event.stopPropagation()} onClick={() => scorePoint('home')}>＋</button></div>}</div><div className="score-center"><small>第 {Math.min(score.set, 5)} 局</small><b>VS</b>{mode === 'match' && <button className="score-undo" disabled={!history.length} onClick={() => undoPoint()}>撤销</button>}</div><div className={`score-team away ${score.serving === 'away' ? 'serving' : ''}`} onPointerDown={(event) => beginScoreGesture(event, 'away')} onPointerUp={finishScoreGesture} onPointerCancel={() => { scoreGesture.current = null }}><span className="score-team-name">橙方</span><strong>{score.away}</strong><small>局分 {score.setsAway}</small>{score.serving === 'away' && <em>● 发球</em>}{mode === 'match' && <div className="score-actions"><button aria-label="橙方减一分" disabled={score.finished || score.away === 0} onPointerDown={(event) => event.stopPropagation()} onClick={() => undoPoint('away')}>−</button><button aria-label="橙方加一分" disabled={score.finished} onPointerDown={(event) => event.stopPropagation()} onClick={() => scorePoint('away')}>＋</button></div>}</div></div></div>
         <div className="rotation-rail" aria-label="六个轮转站位">{[1, 2, 3, 4, 5, 6].map((number) => { const player = lineup.find((piece) => piece.number === number); return <div key={number} className={player ? 'filled' : ''}><b>{number}</b><span>{player ? labels[player.type] : '—'}</span></div> })}</div>
         <div className={`stage-shell ${courtMode}`} ref={shellRef}>
           <div className={`stage ${view === '3d' ? 'view-3d' : 'view-2d'} ${courtClass}`} style={courtTransform} onPointerDown={beginSurface} onPointerMove={handlePointerMove} onPointerUp={finishPointer} onPointerCancel={finishPointer} onWheel={(event) => { event.preventDefault(); if (view === '3d') setTransform3d((current) => ({ ...current, scale: clamp(current.scale - event.deltaY * 0.001, 0.65, 1.55) })); else setTransform2d((current) => ({ ...current, scale: clamp(current.scale - event.deltaY * 0.001, 0.65, 1.55) })) }}>
