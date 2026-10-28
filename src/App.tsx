@@ -71,6 +71,7 @@ export default function App() {
   const longPress = useRef<number | undefined>(undefined)
   const pointerMap = useRef(new Map<number, { x: number; y: number }>())
   const pinchDistance = useRef<number | null>(null)
+  const pinchStartScale = useRef(1)
   const transformStart = useRef({ x: 0, y: 0, rotation: 0, yaw: 0, pitch: 48 })
 
   useEffect(() => {
@@ -192,11 +193,14 @@ export default function App() {
     if ((event.target as HTMLElement).closest('.action-menu')) return
     pointerMap.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
     event.currentTarget.setPointerCapture?.(event.pointerId)
-    transformStart.current = { x: event.clientX, y: event.clientY, rotation: transform2d.rotation, yaw: transform3d.yaw, pitch: transform3d.pitch }
-    interaction.current = { kind: 'surface', pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false }
-    if (view === '3d' && pointerMap.current.size === 2) {
+    if (pointerMap.current.size === 1) {
+      transformStart.current = { x: event.clientX, y: event.clientY, rotation: transform2d.rotation, yaw: transform3d.yaw, pitch: transform3d.pitch }
+      interaction.current = { kind: 'surface', pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false }
+    }
+    if (pointerMap.current.size === 2) {
       const values = [...pointerMap.current.values()]
       pinchDistance.current = Math.hypot(values[0].x - values[1].x, values[0].y - values[1].y)
+      pinchStartScale.current = view === '3d' ? transform3d.scale : transform2d.scale
       if (interaction.current) interaction.current.moved = true
     }
   }
@@ -205,11 +209,12 @@ export default function App() {
     pointerMap.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
     const active = interaction.current
     if (!active) return
-    if (view === '3d' && pointerMap.current.size >= 2 && pinchDistance.current) {
+    if (pointerMap.current.size >= 2 && pinchDistance.current) {
       const values = [...pointerMap.current.values()]
       const distance = Math.hypot(values[0].x - values[1].x, values[0].y - values[1].y)
-      setTransform3d((current) => ({ ...current, scale: clamp(current.scale * distance / pinchDistance.current!, 0.65, 1.55) }))
-      pinchDistance.current = distance
+      const nextScale = clamp(pinchStartScale.current * distance / pinchDistance.current, 0.65, 1.55)
+      if (view === '3d') setTransform3d((current) => ({ ...current, scale: nextScale }))
+      else setTransform2d((current) => ({ ...current, scale: nextScale }))
       active.moved = true
       clearLongPress()
       return
@@ -241,8 +246,9 @@ export default function App() {
     const active = interaction.current
     clearLongPress()
     pointerMap.current.delete(event.pointerId)
-    if (pointerMap.current.size < 2) pinchDistance.current = null
-    if (active?.kind === 'surface' && !active.moved && pointerMap.current.size === 0) {
+    if (pointerMap.current.size > 0) return
+    pinchDistance.current = null
+    if (active?.kind === 'surface' && !active.moved) {
       if (actionId) setActionId(null)
       else add(event)
     }
@@ -328,12 +334,12 @@ export default function App() {
         {mode === 'board' && <><h4>战术板范围</h4><div className="court-mode"><button className={courtMode === 'full' ? 'on' : ''} onClick={() => setCourtMode('full')}>完整球场</button><button className={courtMode === 'single' ? 'on' : ''} onClick={() => setCourtMode('single')}>单边半场</button></div></>}
       </aside>
       <section>
-        <div className="intro"><div><small>{mode === 'match' ? 'MATCH CENTER' : 'TACTICAL BOARD'}</small><h1>{mode === 'match' ? (score.finished ? '比赛已结束' : `第 ${Math.min(score.set, 5)} 局进行中`) : '准备你的下一套战术'}</h1><p>{msg}</p></div><div className="score"><span>蓝方 <b>{score.home}</b><small>局 {score.setsHome}</small></span><em>:</em><span>橙方 <b>{score.away}</b><small>局 {score.setsAway}</small></span></div></div>
+        <div className="intro"><div><small>{mode === 'match' ? 'MATCH CENTER' : 'TACTICAL BOARD'}</small><h1>{mode === 'match' ? (score.finished ? '比赛已结束' : `第 ${Math.min(score.set, 5)} 局进行中`) : '准备你的下一套战术'}</h1><p>{msg}</p></div><div className="scoreboard" aria-label="比赛计分板"><div className={`score-team home ${score.serving === 'home' ? 'serving' : ''}`}><span className="score-team-name">蓝方</span><strong>{score.home}</strong><small>局分 {score.setsHome}</small>{score.serving === 'home' && <em>● 发球</em>}</div><div className="score-center"><small>第 {Math.min(score.set, 5)} 局</small><b>VS</b></div><div className={`score-team away ${score.serving === 'away' ? 'serving' : ''}`}><span className="score-team-name">橙方</span><strong>{score.away}</strong><small>局分 {score.setsAway}</small>{score.serving === 'away' && <em>● 发球</em>}</div></div></div>
         {mode === 'match' && <div className="controls"><button className="blue" disabled={score.finished} onClick={() => scorePoint('home')}>蓝方得分 +1</button><button disabled={!history.length} onClick={() => { const previous = history.at(-1); if (previous) { setScore(previous.score); setPieces(previous.pieces); setHistory(history.slice(0, -1)); setMsg('已撤销上一球，比分和站位已恢复') } }}>撤销上一球</button><button className="orange" disabled={score.finished} onClick={() => scorePoint('away')}>橙方得分 +1</button></div>}
         <div className="rotation-rail" aria-label="六个轮转站位">{[1, 2, 3, 4, 5, 6].map((number) => { const player = lineup.find((piece) => piece.number === number); return <div key={number} className={player ? 'filled' : ''}><b>{number}</b><span>{player ? labels[player.type] : '—'}</span></div> })}</div>
-        <div className="stage-shell" ref={shellRef}>
+        <div className={`stage-shell ${courtMode}`} ref={shellRef}>
           <div className={`stage ${view === '3d' ? 'view-3d' : 'view-2d'} ${courtClass}`} style={courtTransform} onPointerDown={beginSurface} onPointerMove={handlePointerMove} onPointerUp={finishPointer} onPointerCancel={finishPointer} onWheel={(event) => { event.preventDefault(); if (view === '3d') setTransform3d((current) => ({ ...current, scale: clamp(current.scale - event.deltaY * 0.001, 0.65, 1.55) })); else setTransform2d((current) => ({ ...current, scale: clamp(current.scale - event.deltaY * 0.001, 0.65, 1.55) })) }}>
-            <div className="court"><div className="court-floor" /><div className="half a" /><div className="half b" /><div className="end-label home-label">发球区</div><div className="end-label away-label">发球区</div><div className="net"><b className="net-top" /><span className="net-name">球网</span><i className="net-post left" /><i className="net-post right" /></div><div className="attack one"><span>3米线</span></div><div className="attack two"><span>3米线</span></div><div className="service-line one" /><div className="service-line two" />
+            <div className="court"><div className="court-floor" /><div className="half a" /><div className="half b" /><div className="end-label home-label">发球区</div><div className="end-label away-label">发球区</div><div className="net"><span className="net-mesh" /><b className="net-top" /><span className="net-name">球网</span><i className="net-post left" /><i className="net-post right" /><i className="net-base left" /><i className="net-base right" /></div><div className="attack one"><span>3米线</span></div><div className="attack two"><span>3米线</span></div><div className="service-line one" /><div className="service-line two" />
               {visiblePieces.map((piece) => { const display = toDisplayPoint(piece, courtMode, team); return <button key={piece.id} className={`token ${piece.team} ${piece.type}`} style={{ left: `${display.x}%`, top: `${display.y}%` }} onPointerDown={(event) => beginPiece(event, piece)} onPointerUp={finishPointer} onPointerCancel={finishPointer}>
                 <span className="token-glyph">{piece.type === 'ball' ? <span className="ball-model"><i /><b>🏐</b></span> : <span className="player-model"><i className="model-shadow" /><i className="model-head" /><i className="model-neck" /><i className="model-torso">{labels[piece.type]}</i><i className="model-arm left" /><i className="model-arm right" /><i className="model-leg left" /><i className="model-leg right" /><i className="model-shoe left" /><i className="model-shoe right" /><i className="model-badge">{piece.number}</i></span>}</span>
               </button> })}
