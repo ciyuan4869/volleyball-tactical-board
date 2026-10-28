@@ -128,6 +128,13 @@ export default function App() {
       const unscaledY = (dx * Math.sin(radians) + dy * Math.cos(radians)) / transform2d.scale
       dx = unscaledX
       dy = unscaledY
+    } else {
+      const yaw = transform3d.yaw * Math.PI / 180
+      const pitch = transform3d.pitch * Math.PI / 180
+      const localX = dx / (transform3d.scale * Math.max(0.25, Math.cos(yaw)))
+      const localY = (dy / transform3d.scale + Math.sin(pitch) * Math.sin(yaw) * localX) / Math.max(0.25, Math.cos(pitch))
+      dx = localX
+      dy = localY
     }
     return {
       x: clamp((dx + rect.width / 2) / rect.width * 100, 2, 98),
@@ -222,7 +229,7 @@ export default function App() {
         setTransform3d((current) => ({
           ...current,
           yaw: clamp(transformStart.current.yaw + dx * 0.35, -90, 90),
-          pitch: clamp(transformStart.current.pitch - dy * 0.28, -90, 90),
+          pitch: clamp(transformStart.current.pitch - dy * 0.28, 18, 82),
         }))
       } else {
         setTransform2d((current) => ({ ...current, rotation: transformStart.current.rotation + dx * 0.45 }))
